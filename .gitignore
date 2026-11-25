@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+python/veri/ham/*.csv
+python/sonuclar/*
+!python/veri/ham/.gitkeep
+!python/sonuclar/.gitkeep

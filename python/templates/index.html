@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Çukur / Tümsek Analizi</title>
+<style>
+  :root{--zemin:#f6f6f4;--kart:#fff;--yazi:#191919;--ikincil:#666;--cizgi:#e3e3e0;--vurgu:#257de0}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:var(--zemin);color:var(--yazi)}
+  main{max-width:1100px;margin:auto;padding:16px}
+  h1{font-size:22px;margin:8px 0 16px}
+  h2{font-size:17px;margin:0 0 10px}
+  .kart{background:var(--kart);border:1px solid var(--cizgi);border-radius:8px;padding:14px;margin-bottom:14px}
+  .satir{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{padding:8px 14px;border-radius:6px;border:1px solid var(--cizgi);background:#fff;cursor:pointer;font-size:14px}
+  button.ana{background:var(--vurgu);color:#fff;border-color:var(--vurgu)}
+  .kucuk{font-size:12px;padding:3px 8px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--cizgi);white-space:nowrap}
+  th{color:var(--ikincil);font-weight:600}
+  td.s{text-align:right;font-variant-numeric:tabular-nums}
+  .kaydir{overflow-x:auto;max-height:340px;overflow-y:auto}
+  .mesaj{background:#e8f1fc;border-color:#b6d5f8}
+  .ikincil{color:var(--ikincil);font-size:13px}
+  .grafikler{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px}
+  .grafikler img{width:100%;border:1px solid var(--cizgi);border-radius:6px;background:#fff}
+  .ok{color:#0a7d1c}.hata{color:#c62828}
+  @media(max-width:500px){.grafikler{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<h1>Çukur / Tümsek Sınıflandırma</h1>
+
+{% if mesaj %}<div class="kart mesaj">{{ mesaj }}</div>{% endif %}
+
+<div class="kart">
+  <h2>Veri alıcı (RabbitMQ)</h2>
+  {% if alici.bagli %}
+    <span class="ok">● Bağlı</span> <span class="ikincil">Araç verisi otomatik kaydediliyor.</span>
+  {% else %}
+    <span class="hata">● Bağlı değil</span> <span class="ikincil">RabbitMQ çalışıyor mu? {{ alici.hata }}</span>
+  {% endif %}
+  <div class="ikincil">Son mesaj: {{ alici.son_mesaj or "-" }} · Son sürüş: {{ alici.son_run or "-" }}</div>
+</div>
+
+<div class="kart">
+  <h2>Sürüşler ({{ suruslar|length }})</h2>
+  <div class="satir" style="margin-bottom:10px">
+    <form action="/yukle" method="post" enctype="multipart/form-data" class="satir">
+      <input type="file" name="dosyalar" accept=".csv" multiple>
+      <button>CSV yükle</button>
+    </form>
+    <form action="/sahte" method="post"><button name="islem" value="uret">Sahte veri üret</button></form>
+    <form action="/sahte" method="post"><button name="islem" value="sil">Sahte verileri sil</button></form>
+    <a href="/" style="margin-left:auto"><button>Yenile</button></a>
+  </div>
+  <div class="kaydir">
+  <table>
+    <tr><th>Dosya</th><th>run_id</th><th>Parkur</th><th>Hız</th><th>Yön</th><th>Satır</th><th>Marker bölümü</th><th></th></tr>
+    {% for s in suruslar %}
+    <tr>
+      <td><a href="/ham/{{ s.dosya }}">{{ s.dosya }}</a></td>
+      <td class="s">{{ s.run_id }}</td><td>{{ s.parkur }}</td><td class="s">{{ s.hiz }}</td>
+      <td class="s">{{ s.yon }}</td><td class="s">{{ s.satir }}</td>
+      <td class="s">{% if s.parkur == "engelli" and s.marker_bolum != 3 %}<span class="hata">{{ s.marker_bolum }}</span>{% else %}{{ s.marker_bolum }}{% endif %}</td>
+      <td><form action="/sil/{{ s.dosya }}" method="post" onsubmit="return confirm('{{ s.dosya }} silinsin mi?')"><button class="kucuk">sil</button></form></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="ikincil">Henüz sürüş yok.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+  <form action="/analiz" method="post" style="margin-top:12px"><button class="ana">ANALİZİ ÇALIŞTIR</button></form>
+</div>
+
+{% if ozet %}
+<div class="kart" id="sonuc">
+  <h2>Sonuçlar</h2>
+  <p class="ikincil">{{ ozet.surus_sayisi }} sürüş, {{ ozet.pencere_sayisi }} pencere.
+    Eşikler (std az, g): {% for h, e in ozet.esikler.items() %}hız {{ h }} = {{ e }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    {% for h, a in ozet.egitim_test_surusleri.items() %}<br>Hız {{ h }}: eğitim {{ a.egitim }}, test {{ a.test }}{% endfor %}
+  </p>
+  {% for u in ozet.uyarilar %}<p class="hata">{{ u }}</p>{% endfor %}
+  <div style="overflow-x:auto">
+  <table>
+    <tr><th>Algoritma</th><th>Hız</th><th>Pencere</th><th>Doğruluk</th><th>Kesinlik</th><th>Duyarlılık</th><th>F1</th>
+        <th>TP</th><th>TN</th><th>FP</th><th>FN</th><th>Yanlış alarm oranı</th></tr>
+    {% for m in ozet.metrikler %}
+    <tr{% if m.hiz == "tümü" %} style="font-weight:600"{% endif %}>
+      <td>{{ m.algoritma }}</td><td>{{ m.hiz }}</td><td class="s">{{ m.pencere }}</td>
+      <td class="s">{{ "%.3f"|format(m.dogruluk) }}</td><td class="s">{{ "%.3f"|format(m.kesinlik) }}</td>
+      <td class="s">{{ "%.3f"|format(m.duyarlilik) }}</td><td class="s">{{ "%.3f"|format(m.f1) }}</td>
+      <td class="s">{{ m.TP }}</td><td class="s">{{ m.TN }}</td><td class="s">{{ m.FP }}</td><td class="s">{{ m.FN }}</td>
+      <td class="s">{{ "%.3f"|format(m.yanlis_alarm_orani) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="ikincil"><a href="/sonuc/metrikler.csv">metrikler.csv</a> · <a href="/sonuc/pencereler.csv">pencereler.csv</a></p>
+  <div class="grafikler">
+    {% for g in ozet.grafikler %}<a href="/sonuc/{{ g }}" target="_blank"><img src="/sonuc/{{ g }}" alt="{{ g }}"></a>{% endfor %}
+  </div>
+</div>
+{% endif %}
+</main></body>
+</html>
